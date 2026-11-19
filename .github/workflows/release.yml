@@ -1,0 +1,75 @@
+name: Build and release PFF
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Windows build
+    runs-on: windows-2022
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run routing tests
+        shell: pwsh
+        run: dotnet run --project .\Tests\Routing\Routing.csproj -c Release
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build application and installer
+        shell: pwsh
+        run: .\build.ps1 -Setup
+
+      - name: Verify outputs
+        shell: pwsh
+        run: |
+          if (!(Test-Path .\publish\PFF.exe)) { throw 'PFF.exe missing' }
+          if (!(Test-Path .\Installer\output\PFF_Setup.exe)) { throw 'PFF_Setup.exe missing' }
+          Get-FileHash .\publish\PFF.exe -Algorithm SHA256
+          Get-FileHash .\Installer\output\PFF_Setup.exe -Algorithm SHA256
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PFF-Windows-x64
+          path: |
+            publish/PFF.exe
+            Installer/output/PFF_Setup.exe
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { 'v5.4.0' }
+          $notes = @'
+          PFF — приложение для Windows 11 x64.
+
+          - PFF_Setup.exe — рекомендуемый установщик. Для загрузки зависимостей требуется Интернет.
+          - PFF.exe — отдельный исполняемый файл приложения; аудиокомпоненты устанавливаются отдельно.
+
+          Компоненты и условия распространения: THIRD-PARTY.txt в репозитории.
+          '@
+          $notes | Set-Content -LiteralPath release-notes.txt -Encoding utf8
+          if (gh release view $tag --repo $env:GH_REPO 2>$null) {
+            gh release upload $tag .\Installer\output\PFF_Setup.exe .\publish\PFF.exe --clobber --repo $env:GH_REPO
+          } else {
+            gh release create $tag --target '${{ github.sha }}' --title "PFF $tag" --notes-file release-notes.txt .\Installer\output\PFF_Setup.exe .\publish\PFF.exe --repo $env:GH_REPO
+          }

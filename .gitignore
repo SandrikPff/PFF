@@ -1,8 +1,31 @@
-bin/
-obj/
+# .NET / Visual Studio
+**/bin/
+**/obj/
 .vs/
-publish/
-Installer/output/
 *.user
 *.suo
+*.rsuser
+TestResults/
+
+# Build outputs and local files
+publish/
+Installer/output/
+artifacts/
 *.log
+*.tmp
+*.bak
+*.zip
+*.exe
+*.msi
+*.msix
+*.nupkg
+
+# Local application settings and secrets
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.snk
+*.key
+*.pem
